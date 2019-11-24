@@ -1,0 +1,285 @@
+---
+title: "AunerLab_CCLE"
+author: "Kevin Blighe"
+date: "`r Sys.Date()`"
+output:
+  github_document:
+    toc: true
+    toc_depth: 3
+fig_width: 7
+vignette: >
+    %\VignetteIndexEntry{AunerLab_CCLE}
+    %\VignetteEngine{knitr::rmarkdown}
+    %\VignetteEncoding{UTF-8}
+    %\usepackage[utf8]{inputenc}
+---
+
+
+# Set-up
+
+```{r, echo=FALSE}
+
+  library(knitr)
+  opts_chunk$set(tidy = FALSE, message = FALSE, warning = FALSE)
+
+```
+
+## install and load necessary packages
+
+```{r, echo=TRUE}
+
+  if (!requireNamespace('BiocManager', quietly = TRUE))
+    install.packages('BiocManager')
+
+  if (!requireNamespace('ggplot2', quietly = TRUE))
+    BiocManager::install('ggplot2')
+
+  if (!requireNamespace('reshape2', quietly = TRUE))
+    BiocManager::install('reshape2')
+
+  if (!requireNamespace('data.table', quietly = TRUE))
+    BiocManager::install('data.table')
+
+  if (!requireNamespace('gridExtra', quietly = TRUE))
+    BiocManager::install('gridExtra')
+
+  if (!requireNamespace('grid', quietly = TRUE))
+    BiocManager::install('grid')
+
+  library(ggplot2)
+  library(grid)
+  library(gridExtra)
+
+```
+
+## download scripts
+
+Download the 2 functions in the '*R*' directory on this Github repo, either directly or via `git clone`, and ensure that these are placed in a directory called '*R*' in your current working directory, i.e.:
+
+ - R/ccle_barplot.R
+
+ - R/ccle_correlation.R
+
+
+*HINT: to check what is your current working directory, type `getwd()`. It can also be set to something different via `setwd()`*
+
+## download data
+
+Download the files *CCLE_RNAseq_genes_rpkm_20180929.gct.gz* and *Cell_lines_annotations_20181226.txt* from https://portals.broadinstitute.org/ccle/data (sign in required), and place them into a directory called '*data*' in your current working directory, i.e.:
+
+ - data/CCLE_RNAseq_genes_rpkm_20180929.gct.gz
+ 
+ - data/Cell_lines_annotations_20181226.txt
+
+
+
+# Prepare data
+
+## read in and tidy expression data
+
+```{r read_expression_data}
+
+  ccle <- data.table::fread(
+    "gunzip -c data/CCLE_RNAseq_genes_rpkm_20180929.gct.gz",
+    header = TRUE,
+    sep = '\t',
+    stringsAsFactors = FALSE,
+    skip = 2,
+    data.table = FALSE)
+
+  # set rownames
+  rownames(ccle) <- make.unique(ccle$Description)
+
+  # remove first 2 columns to have only numerical data
+  ccle <- ccle[,3:ncol(ccle)]
+
+  # tidy up colnames
+  colnames(ccle) <- gsub("^X", "", gsub("\\.\\.ACH\\.[0-9]*\\.$", "", colnames(ccle)))
+
+```
+
+
+## read in metadata for cell-lines
+
+```{r read_metadata}
+
+  sampleinfo <- read.csv(
+    "data/Cell_lines_annotations_20181226.txt",
+    header = TRUE,
+    sep = "\t",
+    stringsAsFactors = FALSE,
+    skip = 0)
+
+```
+
+## view the different histological types
+
+```{r view_cell_line_types}
+
+  sort(unique(sampleinfo$Hist_Subtype1))
+
+```
+
+## check numbers of cell-lines in each category
+
+```{r check_cell_line_numbers}
+
+  sort(table(sampleinfo$Hist_Subtype1))
+
+```
+
+### extract names of plasma cell myeloma / multiple myeloma lines
+
+```{r extract_MM_cell_lines}
+
+  MMlines <- sampleinfo[grep("plasma_cell_myeloma", sampleinfo$Hist_Subtype1),1]
+
+```
+
+### which MM lines are not in the expression data?
+
+```{r MM_cell_lines_not_in_expression_data}
+
+  MMlines[-which(MMlines %in% colnames(ccle))]
+
+```
+
+
+### filter expression data to only include multiple myeloma lines
+
+```{r filter_expression_data}
+
+  MMccle <- ccle[,which(colnames(ccle) %in% MMlines)]
+
+  colnames(MMccle)
+
+  MMccle[1:5,1:5]
+
+```
+
+
+
+
+# Visualise data
+
+## barplot
+
+Read the barplot function code:
+
+```{r read_barplot_code}
+
+  source('R/ccle_barplot.R')
+
+```
+
+
+Now, generate 3 barplots:
+
+```{r generate_barplot}
+
+  p1 <- ccle_barplot(
+    ccledata = ccle,
+    clinicaldata = sampleinfo,
+    keyword = 'Hodgkin_lymphoma',
+    gene = 'TP53',
+    title = 'Hodgkin\'s lymphoma',
+    xlab = 'Cell-line',
+    greyscale = TRUE,
+    colour = NULL,
+    titlesize = 18,
+    axissize = 14)
+  
+  p2 <- ccle_barplot(
+    ccledata = ccle,
+    clinicaldata = sampleinfo,
+    keyword = 'chronic_myeloid_leukaemia',
+    gene = 'TP53',
+    title = 'Chronic myeloid leukaemia',
+    xlab = 'Cell-line',
+    greyscale = FALSE,
+    titlesize = 18,
+    axissize = 14)
+
+  p3 <- ccle_barplot(
+    ccledata = ccle,
+    clinicaldata = sampleinfo,
+    keyword = 'immortalized_epithelial',
+    gene = 'TP53',
+    title = 'Immortalized epithelial',
+    xlab = 'Cell-line',
+    greyscale = FALSE,
+    colour = 'royalblue',
+    titlesize = 18,
+    axissize = 14)
+
+```
+
+Now, plot these together:
+
+```{r plot_barplot, fig.width = 15, fig.height = 6}
+
+  grid.arrange(p1, p2, p3, ncol = 3, nrow = 1,
+    top = textGrob('Title', gp = gpar(fontsize = 24, fontface="bold")))
+
+  grid.rect(gp = gpar(fill = NA))
+
+```
+
+## correlation plot and analysis
+
+Read the correlation function code:
+
+```{r read_correlation_code}
+
+  source('R/ccle_correlation.R')
+
+```
+
+
+Now, generate 2 correlation plots:
+
+```{r generate_correlation}
+
+  p1 <- ccle_correlation(
+    ccledata = ccle,
+    clinicaldata = sampleinfo,
+    keyword = 'Hodgkin_lymphoma',
+    gene1 = 'TP53',
+    gene2 = 'ATM',
+    title = 'Hodgkin\'s lymphoma',
+    titlesize = 24,
+    axissize = 16)
+
+  p2 <- ccle_correlation(
+    ccledata = ccle,
+    clinicaldata = sampleinfo,
+    keyword = 'acute_myeloid_leukaemia',
+    gene1 = 'TXNIP',
+    gene2 = 'BRCA1',
+    title = 'Acute myeloid leukaemia',
+    titlesize = 24,
+    axissize = 16)
+
+
+```
+
+Now, plot these together:
+
+```{r plot_correlation, fig.width = 12, fig.height = 8}
+
+  grid.arrange(p1, p2, ncol = 2, nrow = 1,
+    top = textGrob('Correlation analysis', gp = gpar(fontsize = 24, fontface="bold")))
+
+  grid.rect(gp = gpar(fill = NA))
+
+```
+
+
+# Session info
+
+```{r}
+
+sessionInfo()
+
+```
+
