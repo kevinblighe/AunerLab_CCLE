@@ -6,7 +6,9 @@ ccle_correlation <- function(
   gene2,
   title,
   titlesize = 24,
-  axissize = 16) {
+  axissize = 16,
+  corDigits = 3,
+  pvalDigits = 4) {
 
   # extract names of plasma cell myeloma / multiple myeloma lines
   lines <- clinicaldata[grep(keyword, clinicaldata$Hist_Subtype1),1]
@@ -23,9 +25,9 @@ ccle_correlation <- function(
   colnames(ggdata) <- c('gene1', 'gene2')
 
   # calculate correlation coefficient and p-value
-  r <- round(cor(ggdata[,1], ggdata[,2], method = 'spearman'), digits = 3)
+  r <- round(cor(ggdata[,1], ggdata[,2], method = 'spearman'), digits = corDigits)
   pval <- cor.test(ggdata[,1], ggdata[,2], method = 'spearman')$p.value
-  pval <- ifelse(pval<0.0001, "p < 0.0001", paste0("p, ", round(pval, digits = 4)))
+  pval <- ifelse(pval<0.0001, "p < 0.0001", paste0("p, ", round(pval, digits = pvalDigits)))
 
   # remove the dollar sign from the input variables (for visualisation)
   xlab <- gsub('\\$', '', gene1)
