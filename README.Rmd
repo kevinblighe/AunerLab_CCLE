@@ -112,23 +112,38 @@ Download the files *CCLE_RNAseq_genes_rpkm_20180929.gct.gz* and *Cell_lines_anno
 
 ```
 
-## view the different histological types
 
-```{r view_cell_line_types}
+## view the primary histological types
+
+```{r view_cell_line_types_histology}
+
+  sort(unique(sampleinfo$Histology))
+
+```
+
+
+## view the different histological sub-types
+
+```{r view_cell_line_types_histological_subtypes}
 
   sort(unique(sampleinfo$Hist_Subtype1))
 
 ```
 
+
 ## check numbers of cell-lines in each category
 
 ```{r check_cell_line_numbers}
+
+  sort(table(sampleinfo$Histology))
 
   sort(table(sampleinfo$Hist_Subtype1))
 
 ```
 
-### extract names of plasma cell myeloma / multiple myeloma lines
+# Case study 1: multiple myeloma correlations
+
+## extract names of plasma cell myeloma / multiple myeloma lines
 
 ```{r extract_MM_cell_lines}
 
@@ -136,7 +151,7 @@ Download the files *CCLE_RNAseq_genes_rpkm_20180929.gct.gz* and *Cell_lines_anno
 
 ```
 
-### which MM lines are not in the expression data?
+## which MM lines are not in the expression data?
 
 ```{r MM_cell_lines_not_in_expression_data}
 
@@ -145,9 +160,9 @@ Download the files *CCLE_RNAseq_genes_rpkm_20180929.gct.gz* and *Cell_lines_anno
 ```
 
 
-### filter expression data to only include multiple myeloma lines
+## filter expression data to only include multiple myeloma lines
 
-```{r filter_expression_data}
+```{r filter_MM_expression_data}
 
   MMccle <- ccle[,which(colnames(ccle) %in% MMlines)]
 
@@ -160,9 +175,9 @@ Download the files *CCLE_RNAseq_genes_rpkm_20180929.gct.gz* and *Cell_lines_anno
 
 
 
-# Visualise data
+## Visualise data
 
-## barplot
+### barplot
 
 Read the barplot function code:
 
@@ -225,7 +240,7 @@ Now, plot these together:
 
 ```
 
-## correlation plot and analysis
+### correlation plot and analysis
 
 Read the correlation function code:
 
@@ -260,7 +275,6 @@ Now, generate 2 correlation plots:
     titlesize = 24,
     axissize = 16)
 
-
 ```
 
 Now, plot these together:
@@ -274,8 +288,383 @@ Now, plot these together:
 
 ```
 
+# Case study 2: malignant melanoma
 
-# Session info
+The malignant melanoma information is only stored in the '*Histology*' column in the metadata, and not the '*Hist_Subtype1*' column, like multiple myeloma.
+
+## extract names of malignant melanoma cell-lines
+
+```{r extract_melanoma_cell_lines}
+
+  melanoma_lines <- sampleinfo[grep("malignant_melanoma", sampleinfo$Histology),1]
+  melanoma_lines
+
+```
+
+## which melanoma lines are not in the expression data?
+
+```{r melanoma_cell_lines_not_in_expression_data}
+
+  melanoma_lines[-which(melanoma_lines %in% colnames(ccle))]
+
+```
+
+
+## generate some plots for melanoma
+
+```{r generate_barplot_melanoma, fig.width = 16, fig.height = 6}
+
+  p1 <- ccle_barplot(
+    ccledata = ccle,
+    clinicaldata = sampleinfo,
+    keyword = 'melanoma',
+    gene = 'TP53',
+    title = 'Malignant melanoma',
+    xlab = 'Cell-line',
+    greyscale = TRUE,
+    colour = NULL,
+    titlesize = 18,
+    axissize = 14)
+  
+  p2 <- ccle_barplot(
+    ccledata = ccle,
+    clinicaldata = sampleinfo,
+    keyword = 'melanoma',
+    gene = 'ATF4',
+    title = 'Malignant melanoma',
+    xlab = 'Cell-line',
+    greyscale = FALSE,
+    titlesize = 18,
+    axissize = 14)
+
+  grid.arrange(p1, p2, ncol = 2, nrow = 1,
+    top = textGrob('Title', gp = gpar(fontsize = 24, fontface="bold")))
+
+  grid.rect(gp = gpar(fill = NA))
+
+```
+
+```{r generate_correlation_melanoma, fig.width = 12, fig.height = 8}
+
+  p1 <- ccle_correlation(
+    ccledata = ccle,
+    clinicaldata = sampleinfo,
+    keyword = 'melanoma',
+    gene1 = 'MAGEA1',
+    gene2 = 'ATF4',
+    title = 'Malignant melanoma',
+    titlesize = 24,
+    axissize = 16)
+
+  p2 <- ccle_correlation(
+    ccledata = ccle,
+    clinicaldata = sampleinfo,
+    keyword = 'melanoma',
+    gene1 = 'TRPV4',
+    gene2 = 'ATF4',
+    title = 'Malignant melanoma',
+    titlesize = 24,
+    axissize = 16)
+
+  grid.arrange(p1, p2, ncol = 2, nrow = 1,
+    top = textGrob('Correlation analysis', gp = gpar(fontsize = 24, fontface="bold")))
+
+  grid.rect(gp = gpar(fill = NA))
+
+```
+
+
+## filter expression data to only include multiple myeloma lines
+
+```{r filter_expression_data_melanoma}
+
+  melanoma_ccle <- ccle[,which(colnames(ccle) %in% melanoma_lines)]
+
+  colnames(melanoma_ccle)
+
+  melanoma_ccle[1:5,1:5]
+
+```
+
+
+# Construct a correlation network and check modules / communities of genes
+
+Here, we will be using my own tutorial: [https://www.biostars.org/p/285296/](Network plot from expression data in R using igraph)
+
+First, let's tidy up the workspace a bit by removing the main CCLE expression table, and also clearing memory:
+
+```{r, echo=TRUE}
+
+  rm(ccle)
+  gc()
+
+```
+
+
+First, we need to install *igraph* and *zFPKM*:
+
+```{r, echo=TRUE}
+
+  if (!requireNamespace('igraph', quietly = TRUE))
+    BiocManager::install('igraph')
+
+  if (!requireNamespace('zFPKM', quietly = TRUE))
+    BiocManager::install('zFPKM')
+
+  library(zFPKM)
+  library(igraph)
+
+```
+
+We will construct a network using a Z-transformed melanoma expression data. This network will be a co-expression network based on Pearson correlation. However, as the data is quite large (~56000 coding and non-coding genes), we would normally require a lot of memory to construct such a network. Therefore, we will reduce the size of the data using a 2-step process:
+
+ - filtering for protein coding genes only
+
+ - filtering out low-expressed genes
+
+
+```{r filter_expression_data_melanoma_protein_coding}
+
+  if (!requireNamespace('igraph', quietly = TRUE))
+    BiocManager::install('igraph')
+
+  library(biomaRt)
+
+  mart <- useMart('ENSEMBL_MART_ENSEMBL', host = 'useast.ensembl.org')
+  mart <- useDataset('hsapiens_gene_ensembl', mart)
+  annotLookup <- getBM(
+    mart = mart,
+    attributes = c(
+      'hgnc_symbol',
+      'entrezgene_id',
+      'ensembl_gene_id',
+      'gene_biotype'),
+    filter = 'hgnc_symbol',
+    values = rownames(melanoma_ccle),
+    uniqueRows=TRUE)
+
+  head(annotLookup)
+
+  prot <- annotLookup[which(annotLookup$gene_biotype == 'protein_coding'),'hgnc_symbol']
+
+  melanoma_ccle <- melanoma_ccle[which(rownames(melanoma_ccle) %in% prot),]
+  dim(melanoma_ccle)
+
+```
+
+So, we are left with 17920 genes across 56 malignant melanoma cell-lines. Let's reduce this further by removing genes of low expression - here we remove genes with mean expression < 7:
+
+```{r, echo=TRUE}
+
+  expressed_cutoff <- 7
+
+```
+
+```{r filter_expression_data_melanoma_protein_coding_lowexpr}
+
+  lowexpression_filt <- apply(melanoma_ccle, 1, mean) >= expressed_cutoff
+  table(lowexpression_filt)
+
+  melanoma_ccle <- melanoma_ccle[lowexpression_filt,]
+  dim(melanoma_ccle)
+
+```
+
+So, we are left with 6398 genes.
+
+
+## Create a graph adjacency based on correlation distances between genes in pairwise fashion.
+
+```{r graph_adjacency_melanoma_protein_coding_lowexpr}
+
+  g <- graph.adjacency(
+    as.matrix(as.dist(cor(t(zFPKM(melanoma_ccle)), method = 'pearson'))),
+    mode = 'undirected',
+    weighted = TRUE,
+    diag = FALSE)
+
+```
+
+## configure the graph, filter out edges, and convert to a minimum spanning tree (MST):
+
+
+Set a title and correlation cut-off (graph edges below this threshold will be removed):
+
+```{r, echo=TRUE}
+
+  title <- 'Malignant melanoma'
+  cor_cutoff <- 0.7
+
+```
+
+```{r configure_melanoma_protein_coding_lowexpr_network, fig.width = 8, fig.height = 8}
+
+  # Simplfy the adjacency object
+  g <- simplify(g, remove.multiple = TRUE, remove.loops = TRUE)
+
+  # Colour negative correlation edges as blue
+  E(g)[which(E(g)$weight<0)]$color <- 'darkblue'
+
+  # Colour positive correlation edges as red
+  E(g)[which(E(g)$weight>0)]$color <- 'darkred'
+
+  # Convert edge weights to absolute values
+  E(g)$weight <- abs(E(g)$weight)
+
+  # Remove edges below absolute correlation cutoff
+  g <- delete_edges(g, E(g)[which(E(g)$weight < cor_cutoff)])
+
+  # Remove any vertices remaining that have no edges
+  g <- delete.vertices(g, degree(g)==0)
+
+  # Assign names to the graph vertices (optional)
+  V(g)$name <- V(g)$name
+
+  # Change shape of graph vertices
+  V(g)$shape <- 'sphere'
+
+  # Change colour of graph vertices
+  V(g)$color <- 'skyblue'
+
+  # Change colour of vertex frames
+  V(g)$vertex.frame.color <- 'white'
+
+  # Scale the size of the vertices to be proportional to the level of expression of each gene represented by each vertex
+  # Multiply scaled vales by a factor of 10
+  scale01 <- function(x){(x-min(x))/(max(x)-min(x))}
+  vSizes <- (scale01(apply(melanoma_ccle, 1, mean)) + 1.0) * 2
+
+  # Amplify or decrease the width of the edges
+  edgeweights <- E(g)$weight * 2.0
+
+  # Convert the graph adjacency object into a minimum spanning tree based on Prim's algorithm
+  mst <- mst(g, algorithm = 'prim')
+
+  # Plot the tree object
+  plot(
+    mst,
+    #layout = layout.fruchterman.reingold,
+    edge.curved = TRUE,
+    vertex.size = vSizes,
+    vertex.label.dist = -0.5,
+    vertex.label.color = 'black',
+    asp = FALSE,
+    vertex.label.cex = 0.1,
+    edge.width = edgeweights,
+    edge.arrow.mode = 0,
+    main = title)
+
+```
+
+```{r echo = FALSE}
+
+  rm(g); rm(melanoma_ccle); gc(); gc()
+
+```
+
+## Identify communities in the tree object based on Louvain method
+
+```{r plot_communities_melanoma_protein_coding_lowexpr_network, fig.width = 16, fig.height = 8}
+
+  mst.communities <- cluster_louvain(mst, weights=NULL)
+  mst.clustering <- make_clusters(mst, membership = mst.communities$membership)
+  V(mst)$color <- mst.communities$membership + 1
+
+  par(mfrow=c(1,2))
+  plot(
+    mst.clustering, mst,
+    #layout = layout.fruchterman.reingold,
+    edge.curved = TRUE,
+    vertex.size = vSizes,
+    vertex.label.dist = -0.5,
+    vertex.label.color = 'black',
+    asp = FALSE,
+    vertex.label.cex = 0.1,
+    edge.width = edgeweights,
+    edge.arrow.mode = 0,
+    main=paste0(title, 'communities / modules'))
+
+  plot(
+    mst,
+    #layout = layout.fruchterman.reingold,
+    edge.curved = TRUE,
+    vertex.size = vSizes,
+    vertex.label.dist = -0.5,
+    vertex.label.color = 'black',
+    asp = FALSE,
+    vertex.label.cex = 0.1,
+    edge.width = edgeweights,
+    edge.arrow.mode = 0,
+    main=paste0(title, 'communities / modules'))
+
+```
+
+## further analyses
+
+### check the vertex degree, i.e., number of edges / connections to each vertex
+
+```{r vertexdegrees_melanoma_protein_coding_lowexpr_network}
+
+  head(degree(mst))
+  sort(degree(mst), decreasing = TRUE)[1:20]
+
+```
+
+A lot of these top genes have known roles in melanoma.
+
+What about the ATF genes?
+
+```{r, echo=TRUE}
+
+  degree(mst)[grep('ATF', names(degree(mst)))]
+
+```
+
+Not too important in melanoma, it seems; although, there could be other reasons for this finding.
+
+
+### output the gene-to-module assignments
+
+```{r communities_melanoma_protein_coding_lowexpr_network}
+
+  commSummary <- data.frame(
+    Gene = mst.communities$names,
+    Community = mst.communities$membership)
+  commSummary <- commSummary[order(commSummary$Community),]
+
+```
+
+In which modules are the ATF genes?
+
+```{r, echo=TRUE}
+
+  commSummary[grep('ATF', commSummary$Gene),]
+  commSummary[which(commSummary$Community == 6111),]
+
+```
+
+So, purely looking at *ATF4*, it is in its own module with no other genes. This again just means that it is not important in melanomas.
+
+
+### calculate Kleinberg's hub centrality scores
+
+```{r hubscores_melanoma_protein_coding_lowexpr_network}
+
+  hub <- hub_score(mst, scale = TRUE)
+  hub <- hub$vector[order(hub$vector, decreasing = TRUE)]
+  hub[1:20]
+
+```
+
+The hub score is another way of determining important genes in a network. We can see that the genes scoring the highest are also the ones that have the highest vertex degrees, which makes sense, and, again, these are genes already known to be important in melanoma in the literature. In fact, *KRT14* scores 1.0, which is the highest possible score, attesting to its role in melanoma signaling. *ALX1*, along with the others, also has a well-established role in melanoma.
+
+# Session info / Tidy up
+
+```{r, echo=FALSE}
+
+  gc()
+
+```
 
 ```{r}
 

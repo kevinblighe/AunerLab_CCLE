@@ -12,8 +12,13 @@ ccle_barplot <- function(
 
   # extract names of plasma cell myeloma / multiple myeloma lines
   lines <- sampleinfo[grep(keyword, clinicaldata$Hist_Subtype1),1]
-  if (length(lines) < 2)
-    stop('Error - too few cell-lines')
+  if (length(lines) < 2) {
+    lines <- sampleinfo[grep(keyword, clinicaldata$Histology),1]
+
+    if (length(lines) < 2) {
+      stop('Error - too few cell-lines or nothing found')
+    }
+  }
 
   # filter expression data to only include multiple myeloma lines
   data <- ccledata[,which(colnames(ccledata) %in% lines)]
